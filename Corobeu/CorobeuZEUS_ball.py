@@ -6,7 +6,7 @@ import struct
 import signal
 import wrapper_pb2 as wr
 import sys
-from config import IP_KRATOS, KRATOS_ID
+from config import IP_ZEUS, ZEUS_ID
 
 def init_vision_socket(VISION_IP="224.5.23.2", VISION_PORT=10015):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -28,9 +28,9 @@ class Corobeu:
         self.kp = kp
         self.ki = ki
         self.kd = kd
-        self.v_max = 227
+        self.v_max = 255
         self.v_min = 70
-        self.v_linear = 200
+        self.v_linear = 255
         self.phi = 0
         
         self.last_speed_time = time.time()
@@ -132,13 +132,11 @@ class Corobeu:
                 #Evitando travamentos em paredes
                 
                 if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                    # return
                     self.travado(x, y, x_ant, y_ant)
 
                 else:
-                    # return
                     vl, vr = self.speed_control(U, omega)
-                    self.send_speed(vl + 28, vr)
+                    self.send_speed(vl, vr)
                     
                 # self.send_speed(0,0)
                 # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
@@ -184,10 +182,10 @@ class Corobeu:
 
                    if (a % 2 == 0):
                        a += 1
-                       self.send_speed(-203, -175)
+                       self.send_speed(-210, -210)
                    else:
                        a += 1
-                       self.send_speed(203, 175)
+                       self.send_speed(210, 210)
 
                    self.last_speed_time = current_time
                    current_time = time.time()
@@ -210,9 +208,9 @@ class Corobeu:
 
                 if (current_time - self.last_speed_time >= 0.7):
                     if (phi < 0):
-                        self.send_speed(-238, -210)
+                        self.send_speed(-210, -210)
                     if (phi > 0):
-                        self.send_speed(238, 210)
+                        self.send_speed(210, 210)
 
                     x_ant = x
                     y_ant = y
@@ -231,9 +229,9 @@ class Corobeu:
 if __name__ == "__main__":
     VISION_IP = "224.5.23.2"
     VISION_PORT = 10015
-    ROBOT_IP = IP_KRATOS
+    ROBOT_IP =  IP_ZEUS
     ROBOT_PORT = 80
-    ROBOT_ID = KRATOS_ID
+    ROBOT_ID = ZEUS_ID
 
     Kp = 3.6
     Ki = 0.1

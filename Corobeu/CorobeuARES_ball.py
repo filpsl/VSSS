@@ -6,7 +6,7 @@ import struct
 import signal
 import wrapper_pb2 as wr
 import sys
-from config import IP_KRATOS, KRATOS_ID
+from config import IP_ARES, ARES_ID
 
 def init_vision_socket(VISION_IP="224.5.23.2", VISION_PORT=10015):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -28,9 +28,9 @@ class Corobeu:
         self.kp = kp
         self.ki = ki
         self.kd = kd
-        self.v_max = 227
+        self.v_max = 225
         self.v_min = 70
-        self.v_linear = 200
+        self.v_linear = 225
         self.phi = 0
         
         self.last_speed_time = time.time()
@@ -73,7 +73,7 @@ class Corobeu:
 
     
     def follow_ball(self):
-        deltaT = 0.7
+        deltaT = 0.1
         a = 1
         interror_phi = Integral_part_phi = fant_phi = 0
         phi_obs = 0
@@ -127,18 +127,16 @@ class Corobeu:
             
             current_time = time.time()
 
-            if current_time - self.last_speed_time >= 0.7:
+            if current_time - self.last_speed_time >= deltaT:
                 
                 #Evitando travamentos em paredes
                 
                 if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                    # return
                     self.travado(x, y, x_ant, y_ant)
 
                 else:
-                    # return
                     vl, vr = self.speed_control(U, omega)
-                    self.send_speed(vl + 28, vr)
+                    self.send_speed(vl + 30, vr)
                     
                 # self.send_speed(0,0)
                 # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
@@ -152,6 +150,88 @@ class Corobeu:
             # if error_distance_global <= 0.07:
             #     self.send_speed(0, 0)
             #     a = 0
+            x_ant = x
+            y_ant = y
+            
+    
+    def follow_path(self, path_x, path_y):
+        deltaT = 0.1
+        a = 1
+        interror_phi = Integral_part_phi = fant_phi = 0
+        phi_obs = 0
+        omega_ant = 0
+        angulo_anterior_phid = 0
+        angulo_anterior_phi_robot = 0
+        
+        x_ant = 0
+        y_ant = 0
+        
+
+        while a == 1:
+            x, y, phi_obs = self.get_position()[0:3]
+
+            if x is None or y is None:
+                continue
+
+            phid = math.atan2((path_y - y), (path_x - x))
+            if phid > 3.15:
+                phid = phid - 6.2832
+
+            # Calcula la diferencia entre el ángulo actual y el anterior
+            diferencia_phid = phid - angulo_anterior_phid
+            diferencia_phi  = phi_obs - angulo_anterior_phi_robot
+            # Si la diferencia es mayor que π, ajusta restando 2π
+            if diferencia_phid > math.pi:
+                phid -= 2 * math.pi
+            # Si la diferencia es menor que -π, ajusta sumando 2π
+            elif diferencia_phid < -math.pi:
+                phid += 2 * math.pi
+            
+            # Si la diferencia es mayor que π, ajusta restando 2π
+            if diferencia_phi > math.pi:
+                phi_obs -= 2 * math.pi
+            # Si la diferencia es menor que -π, ajusta sumando 2π
+            elif diferencia_phi < -math.pi:
+                phi_obs += 2 * math.pi
+            
+            # Actualiza el ángulo anterior
+            angulo_anterior_phid = phid
+            angulo_anterior_phi_robot = phi_obs
+
+            error_phi = phid - phi_obs
+            omega, fant_phi, interror_phi, Integral_part_phi = self.pid_controller(self.kp, self.ki, self.kd, deltaT, error_phi, interror_phi, fant_phi, Integral_part_phi)
+            
+
+            error_distance = math.sqrt((path_y- y)**2 + (path_x - x)**2)
+            error_distance_global = math.sqrt((path_y - y) ** 2 + (path_x - x) ** 2)
+            
+            U = self.v_linear
+            
+            current_time = time.time()
+
+            if current_time - self.last_speed_time >= deltaT:
+                
+                # #Evitando travamentos em paredes
+                
+                if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
+                    self.travado(x, y, x_ant, y_ant)
+
+                else:
+                    vl, vr = self.speed_control(U, omega)
+                    self.send_speed(vl + 20, vr)
+                    
+                # self.send_speed(0,0)
+                # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
+                # print(f"Erro: {error_phi}, Omega: {omega}, Phid: {math.degrees(phid)}")
+
+                self.last_speed_time = current_time
+            
+            if error_distance <= 0.2:
+                self.send_speed(0, 0)
+                a = 0
+            if error_distance_global <= 0.07:
+                self.send_speed(0, 0)
+                a = 0
             x_ant = x
             y_ant = y
     
@@ -179,15 +259,15 @@ class Corobeu:
         a = 0
         try:
             while (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-               if (current_time - self.last_speed_time >= 0.7):
+               if (current_time - self.last_speed_time >= 1):
                    x, y = self.get_position()[0:2]
 
                    if (a % 2 == 0):
                        a += 1
-                       self.send_speed(-203, -175)
+                       self.send_speed(-210, -205)
                    else:
                        a += 1
-                       self.send_speed(203, 175)
+                       self.send_speed(210, 205)
 
                    self.last_speed_time = current_time
                    current_time = time.time()
@@ -199,28 +279,7 @@ class Corobeu:
         except:
             return
         return
-    
-    
-    def travado2(self, x, y, x_ant, y_ant):
-        
-        try:
-            while (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                x, y, phi = self.get_position()[0:3]
-                current_time = time.time()
 
-                if (current_time - self.last_speed_time >= 0.7):
-                    if (phi < 0):
-                        self.send_speed(-238, -210)
-                    if (phi > 0):
-                        self.send_speed(238, 210)
-
-                    x_ant = x
-                    y_ant = y
-
-                self.last_speed_time = current_time
-        except:
-            return
-        return
     
     def off(self, signum=None, frame=None ):
         self.send_speed(0,0)
@@ -231,13 +290,14 @@ class Corobeu:
 if __name__ == "__main__":
     VISION_IP = "224.5.23.2"
     VISION_PORT = 10015
-    ROBOT_IP = IP_KRATOS
+    ROBOT_IP = IP_ARES
     ROBOT_PORT = 80
-    ROBOT_ID = KRATOS_ID
+    ROBOT_ID = ARES_ID
 
-    Kp = 3.6
-    Ki = 0.1
-    Kd = 1
+    Kp = 10
+    Ki = 2
+    Kd = 1.2
+    
 
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
     crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd)

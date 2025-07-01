@@ -27,7 +27,7 @@
 #define PWM_MOTOR_RESOLUTION 8
 
 // Wifi settings
-#define NETWORK "LARSIS_ROBOS"
-#define PASSWORD "larsis@larsis"
+#define NETWORK "Filipe"
+#define PASSWORD "iokf1342"
 
 
