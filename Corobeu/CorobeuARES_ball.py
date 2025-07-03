@@ -302,4 +302,4 @@ if __name__ == "__main__":
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
     crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd)
 
-    crb01.follow_ball()
+    crb01.follow_path(0.4, 0.4)
