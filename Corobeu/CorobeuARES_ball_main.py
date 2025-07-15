@@ -259,7 +259,7 @@ class Corobeu:
         a = 0
         try:
             while (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-               if (current_time - self.last_speed_time >= 1):
+               if (current_time - self.last_speed_time >= 0.1):
                    x, y = self.get_position()[0:2]
 
                    if (a % 2 == 0):
