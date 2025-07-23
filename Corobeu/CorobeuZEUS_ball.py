@@ -4,9 +4,9 @@ import math
 import numpy as np
 import struct
 import signal
-import wrapper_pb2 as wr
+from configs import wrapper_pb2 as wr
 import sys
-from config import IP_ZEUS, ZEUS_ID
+from configs.config import IP_ZEUS, ID_ZEUS, COR_DO_TIME
 
 def init_vision_socket(VISION_IP="224.5.23.2", VISION_PORT=10015):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -28,20 +28,28 @@ class Corobeu:
         self.kp = kp
         self.ki = ki
         self.kd = kd
-        self.v_max = 255
+        self.v_max = 225
         self.v_min = 70
-        self.v_linear = 255
+        self.v_linear = 225
         self.phi = 0
         
         self.last_speed_time = time.time()
-
+        
+        if COR_DO_TIME == 1:
+            self._robot_attr = "robots_blue"
+        elif COR_DO_TIME == 0:
+            self._robot_attr = "robots_yellow"
+        else: 
+            raise ValueError(f"COR_DO_TIME: {COR_DO_TIME} é inválido, altere-o no 'config_ideal.py'.")
+        
         signal.signal(signal.SIGINT, self.off)
         signal.signal(signal.SIGTERM, self.off)
         
     def get_position(self):
         data, _ = self.vision_sock.recvfrom(1024)
         frame = wr.SSL_WrapperPacket().FromString(data)
-        for robot in frame.detection.robots_yellow:
+        robots = getattr(frame.detection, COR_DO_TIME)
+        for robot in robots:
             if robot.robot_id == self.robot_id:
                 return robot.x / 1000, robot.y / 1000, robot.orientation, frame.detection.balls[0].x / 1000, frame.detection.balls[0].y / 1000
         return None, None, None, None, None
@@ -73,7 +81,7 @@ class Corobeu:
 
     
     def follow_ball(self):
-        deltaT = 0.7
+        deltaT = 0.1
         a = 1
         interror_phi = Integral_part_phi = fant_phi = 0
         phi_obs = 0
@@ -127,7 +135,7 @@ class Corobeu:
             
             current_time = time.time()
 
-            if current_time - self.last_speed_time >= 0.7:
+            if current_time - self.last_speed_time >= deltaT:
                 
                 #Evitando travamentos em paredes
                 
@@ -137,22 +145,12 @@ class Corobeu:
                 else:
                     vl, vr = self.speed_control(U, omega)
                     self.send_speed(vl, vr)
-                    
-                # self.send_speed(0,0)
-                # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
-                # print(f"Erro: {error_phi}, Omega: {omega}, Phid: {math.degrees(phid)}")
 
                 self.last_speed_time = current_time
             
-            # if error_distance <= 0.2:
-            #     self.send_speed(0, 0)
-            #     a = 0
-            # if error_distance_global <= 0.07:
-            #     self.send_speed(0, 0)
-            #     a = 0
             x_ant = x
             y_ant = y
-    
+            
 
     def pid_controller(self, kp, ki, kd, deltaT, error, interror, fant, Integral_part):
         Integral_saturation = 1
@@ -177,15 +175,15 @@ class Corobeu:
         a = 0
         try:
             while (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-               if (current_time - self.last_speed_time >= 0.7):
+               if (current_time - self.last_speed_time >= 0.1):
                    x, y = self.get_position()[0:2]
 
                    if (a % 2 == 0):
                        a += 1
-                       self.send_speed(-210, -210)
+                       self.send_speed(-210, -205)
                    else:
                        a += 1
-                       self.send_speed(210, 210)
+                       self.send_speed(210, 205)
 
                    self.last_speed_time = current_time
                    current_time = time.time()
@@ -197,28 +195,7 @@ class Corobeu:
         except:
             return
         return
-    
-    
-    def travado2(self, x, y, x_ant, y_ant):
-        
-        try:
-            while (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                x, y, phi = self.get_position()[0:3]
-                current_time = time.time()
 
-                if (current_time - self.last_speed_time >= 0.7):
-                    if (phi < 0):
-                        self.send_speed(-210, -210)
-                    if (phi > 0):
-                        self.send_speed(210, 210)
-
-                    x_ant = x
-                    y_ant = y
-
-                self.last_speed_time = current_time
-        except:
-            return
-        return
     
     def off(self, signum=None, frame=None ):
         self.send_speed(0,0)
@@ -229,15 +206,14 @@ class Corobeu:
 if __name__ == "__main__":
     VISION_IP = "224.5.23.2"
     VISION_PORT = 10015
-    ROBOT_IP =  IP_ZEUS
-    ROBOT_PORT = 80
-    ROBOT_ID = ZEUS_ID
-
-    Kp = 3.6
-    Ki = 0.1
-    Kd = 1
+    ROBOT_IP = IP_ZEUS
+    ROBOT_PORT = ID_ZEUS
+    Kp = 10
+    Ki = 2
+    Kd = 1.2
+    
 
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
-    crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd)
+    crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ID_ZEUS, vision_sock, Kp, Ki, Kd)
 
     crb01.follow_ball()

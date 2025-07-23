@@ -1,13 +1,12 @@
 import numpy as np
-from queue import PriorityQueue
 import socket
 import time
 import math
 import struct
 import signal
-import wrapper_pb2 as wr
+import configs.wrapper_pb2 as wr
 import sys
-from config import IP_ARES, ARES_ID
+from config import IP_ARES, ID_ARES, COR_DO_TIME
 
 import numpy as np
 
@@ -76,133 +75,16 @@ class KalmanFilter:
         """
         # Inovação ou resíduo da medição
         y = z - np.dot(self.H, self.x)
-        
         # Covariância da inovação
         S = np.dot(self.H, np.dot(self.P, self.H.T)) + self.R
-        
         # Ganho de Kalman ótimo
         K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(S))
-        
         # Atualiza a estimativa do estado
         self.x = self.x + np.dot(K, y)
-        
         # Atualiza a covariância do erro
-        I = np.eye(self.H.shape[1]) # Matriz identidade 4x4
+        I = np.eye(self.F.shape[0]) # Matriz identidade 4x4
         self.P = np.dot(I - np.dot(K, self.H), self.P)
         
-
-def calcular_forca_atrativa(pos_robo, pos_alvo, k_att):
-    distancia = np.linalg.norm(pos_alvo - pos_robo)
-    if distancia == 0:
-        return np.zeros(2)
-    # A força é um vetor unitário na direção do alvo, escalado por k_att e distância
-    vetor_unitario = (pos_alvo - pos_robo) / distancia
-    # A magnitude pode ser simplesmente proporcional à distância ou constante
-    # Uma abordagem comum é ter uma força que aumenta com a distância até um certo limite
-    magnitude = k_att * distancia 
-    return vetor_unitario * magnitude
-
-
-def calcular_forca_repulsiva(pos_robo, pos_obstaculo, raio_obstaculo, k_rep, raio_influencia):
-    vetor_dist = pos_robo - pos_obstaculo
-    distancia = np.linalg.norm(vetor_dist)
-    
-    # Se estiver fora da zona de influência do obstáculo, a força é zero
-    if distancia > raio_influencia or distancia == 0:
-        return np.zeros(2)
-    
-    # Se estiver dentro do raio do obstáculo (colisão iminente), força máxima
-    if distancia <= raio_obstaculo:
-        return (vetor_dist / distancia) * float('inf')
-
-    # A força é inversamente proporcional à distância e aponta para longe do obstáculo
-    vetor_unitario = vetor_dist / distancia
-    magnitude = k_rep * (1.0/distancia - 1.0/raio_influencia) / (distancia**2)
-    return vetor_unitario * magnitude
-
-
-# Pseudocódigo simplificado da lógica principal do A*
-# A implementação completa pode ser encontrada em [18]
-
-
-def a_star_search(grid, start_pos, goal_pos):
-    """
-    Encontra o caminho mais curto de start_pos para goal_pos usando o algoritmo A*.
-    """
-    rows, cols = grid.shape
-    open_list = PriorityQueue()
-    open_list.put((0, start_pos)) # (f_cost, position)
-
-    came_from = {} # Dicionário para reconstruir o caminho
-
-    # g_cost: Custo do início até a posição atual.
-    # Inicializa todos os custos como infinito, exceto o inicial.
-    g_cost = { (r, c): float('inf') for r in range(rows) for c in range(cols) }
-    g_cost[start_pos] = 0
-
-    # f_cost: Custo total estimado (g_cost + heurística).
-    f_cost = { (r, c): float('inf') for r in range(rows) for c in range(cols) }
-    f_cost[start_pos] = heuristic(start_pos, goal_pos)
-    
-    # Um conjunto (set) para verificar rapidamente se um nó está na open_list
-    open_list_hash = {start_pos}
-
-    while not open_list.empty():
-        # Pega o nó na fila de prioridade com o menor f_cost
-        # O item é (f_cost, position), então pegamos a posição com [1]
-        current_pos = open_list.get()[1]
-        open_list_hash.remove(current_pos)
-
-        if current_pos == goal_pos:
-            return reconstruct_path(came_from, current_pos) # Sucesso!
-
-        for neighbor_pos in get_valid_neighbors(grid, current_pos):
-            # A distância de um nó para seu vizinho é 1 (cardinal) ou sqrt(2) (diagonal)
-            # Para simplificar e garantir a admissibilidade da heurística, usamos o custo real.
-            move_cost = heuristic(current_pos, neighbor_pos)
-            tentative_g_cost = g_cost[current_pos] + move_cost
-            
-            if tentative_g_cost < g_cost[neighbor_pos]:
-                # Este é um caminho melhor. Registre-o.
-                came_from[neighbor_pos] = current_pos
-                g_cost[neighbor_pos] = tentative_g_cost
-                f_cost[neighbor_pos] = tentative_g_cost + heuristic(neighbor_pos, goal_pos)
-                
-                if neighbor_pos not in open_list_hash:
-                    open_list.put((f_cost[neighbor_pos], neighbor_pos))
-                    open_list_hash.add(neighbor_pos)
-    
-    return None # Caminho não encontrado
-def heuristic(a, b):
-    """Calcula a distância Euclidiana entre dois pontos (a e b)."""
-    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
-
-def get_valid_neighbors(grid, node):
-    """Obtém os vizinhos válidos de um nó no grid."""
-    neighbors = []
-    rows, cols = grid.shape
-    
-    # Movimentos possíveis (8 direções)
-    for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]:
-        r, c = node[0] + dr, node[1] + dc
-
-        # Verifica se o vizinho está dentro dos limites do grid
-        if 0 <= r < rows and 0 <= c < cols:
-            # Verifica se não é um obstáculo (assumindo que 1 é obstáculo)
-            if grid[r][c] == 0:
-                neighbors.append((r, c))
-    return neighbors
-
-
-def reconstruct_path(came_from, current):
-    """Reconstrói o caminho do início ao fim."""
-    path = [current]
-    while current in came_from:
-        current = came_from[current]
-        path.append(current)
-    path.reverse() # Inverte para ter a ordem do início ao fim
-    return path
-
 
 def init_vision_socket(VISION_IP="224.5.23.2", VISION_PORT=10015):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -231,6 +113,13 @@ class Corobeu:
         self.phi = 0
         
         self.last_speed_time = time.time()
+        
+        if COR_DO_TIME == 1:
+            self._robot_attr = "robots_blue"
+        elif COR_DO_TIME == 0:
+            self._robot_attr = "robots_yellow"
+        else: 
+            raise ValueError(f"COR_DO_TIME: {COR_DO_TIME} é inválido, altere-o no 'config_ideal.py'.")
         
         self.kf = KalmanFilter(
             dt = self.dt,
@@ -266,7 +155,8 @@ class Corobeu:
                 obstacles.append((robot.x / 1000, robot.y / 1000))
 
         # Encontra nosso robô e atualiza o filtro
-        for robot in frame.detection.robots_yellow: # Assumindo que seu robô é amarelo
+        robots = getattr(frame.detection, COR_DO_TIME)
+        for robot in robots:
             if robot.robot_id == self.robot_id:
                 # Posição medida pela câmera (em metros)
                 px_measured = robot.x / 1000
@@ -277,8 +167,12 @@ class Corobeu:
                 self.kf.predict()
                 # O filtro precisa da medição como um vetor coluna numpy
                 measurement = np.array([[px_measured], [py_measured]])
-                self.kf.update(measurement)
+                measurement = np.reshape(measurement, (2,1))
+                try:
+                    self.kf.update(measurement)
                 
+                except:
+                    return None, None, None, None, None
                 # O estado estimado é [px, py, vx, vy]
                 filtered_pos = (self.kf.x[0, 0], self.kf.x[1, 0])
                 filtered_vel = (self.kf.x[2, 0], self.kf.x[3, 0])
@@ -386,101 +280,10 @@ class Corobeu:
                     vl, vr = self.speed_control(U, omega)
                     self.send_speed(vl + 30, vr)
                     
-                # self.send_speed(0,0)
-                # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
-                # print(f"Erro: {error_phi}, Omega: {omega}, Phid: {math.degrees(phid)}")
-
                 self.last_speed_time = current_time
             
-            # if error_distance <= 0.2:
-            #     self.send_speed(0, 0)
-            #     a = 0
-            # if error_distance_global <= 0.07:
-            #     self.send_speed(0, 0)
-            #     a = 0
             x_ant = x
-            y_ant = y
-            
-    
-    def follow_path(self, path_x, path_y):
-        a = 1
-        interror_phi = Integral_part_phi = fant_phi = 0
-        phi_obs = 0
-        omega_ant = 0
-        angulo_anterior_phid = 0
-        angulo_anterior_phi_robot = 0
-        
-        x_ant = 0
-        y_ant = 0
-        
-
-        while a == 1:
-            (x, y), (x_speed, y_speed), phi_obs = self.update_state()[0:3]
-
-            if x is None or y is None:
-                continue
-
-            phid = math.atan2((path_y - y), (path_x - x))
-            if phid > 3.15:
-                phid = phid - 6.2832
-
-            # Calcula la diferencia entre el ángulo actual y el anterior
-            diferencia_phid = phid - angulo_anterior_phid
-            diferencia_phi  = phi_obs - angulo_anterior_phi_robot
-            # Si la diferencia es mayor que π, ajusta restando 2π
-            if diferencia_phid > math.pi:
-                phid -= 2 * math.pi
-            # Si la diferencia es menor que -π, ajusta sumando 2π
-            elif diferencia_phid < -math.pi:
-                phid += 2 * math.pi
-            
-            # Si la diferencia es mayor que π, ajusta restando 2π
-            if diferencia_phi > math.pi:
-                phi_obs -= 2 * math.pi
-            # Si la diferencia es menor que -π, ajusta sumando 2π
-            elif diferencia_phi < -math.pi:
-                phi_obs += 2 * math.pi
-            
-            # Actualiza el ángulo anterior
-            angulo_anterior_phid = phid
-            angulo_anterior_phi_robot = phi_obs
-
-            error_phi = phid - phi_obs
-            omega, fant_phi, interror_phi, Integral_part_phi = self.pid_controller(self.kp, self.ki, self.kd, self.dt, error_phi, interror_phi, fant_phi, Integral_part_phi)
-            
-
-            error_distance = math.sqrt((path_y- y)**2 + (path_x - x)**2)
-            error_distance_global = math.sqrt((path_y - y) ** 2 + (path_x - x) ** 2)
-            
-            U = self.v_linear
-            
-            current_time = time.time()
-
-            if current_time - self.last_speed_time >= self.dt:
-                
-                # #Evitando travamentos em paredes
-                
-                if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                    self.travado(x, y, x_ant, y_ant)
-
-                else:
-                    vl, vr = self.speed_control(U, omega)
-                    self.send_speed(vl + 20, vr)
-                    
-                # self.send_speed(0,0)
-                # print(f"X: {x}, Y: {y}, Phi: {math.degrees(phi_obs)}")
-                # print(f"Erro: {error_phi}, Omega: {omega}, Phid: {math.degrees(phid)}")
-
-                self.last_speed_time = current_time
-            
-            if error_distance <= 0.2:
-                self.send_speed(0, 0)
-                a = 0
-            if error_distance_global <= 0.07:
-                self.send_speed(0, 0)
-                a = 0
-            x_ant = x
-            y_ant = y
+            y_ant = y       
     
 
     def pid_controller(self, kp, ki, kd, dt, error, interror, fant, Integral_part):
@@ -527,6 +330,16 @@ class Corobeu:
             return
         return
 
+
+    def angle_diff(a, b):
+        diff = b - a
+        return
+    
+    
+    def wrap_angle(angle):
+        return (angle + math.pi) % (2*math.pi) - math.pi
+    
+    
     
     def off(self, signum=None, frame=None ):
         self.send_speed(0,0)
@@ -539,7 +352,7 @@ if __name__ == "__main__":
     VISION_PORT = 10015
     ROBOT_IP = IP_ARES
     ROBOT_PORT = 80
-    ROBOT_ID = ARES_ID
+    ROBOT_ID = ID_ARES
 
     Kp = 10
     Ki = 2
