@@ -48,7 +48,7 @@ class Corobeu:
     def get_position(self):
         data, _ = self.vision_sock.recvfrom(1024)
         frame = wr.SSL_WrapperPacket().FromString(data)
-        robots = getattr(frame.detection, COR_DO_TIME)
+        robots = getattr(frame.detection, self._robot_attr)
         for robot in robots:
             if robot.robot_id == self.robot_id:
                 return robot.x / 1000, robot.y / 1000, robot.orientation, frame.detection.balls[0].x / 1000, frame.detection.balls[0].y / 1000
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     VISION_IP = "224.5.23.2"
     VISION_PORT = 10015
     ROBOT_IP = IP_KRATOS
-    ROBOT_PORT = ID_KRATOS
+    ROBOT_PORT = 80
     Kp = 10
     Ki = 2
     Kd = 1.2

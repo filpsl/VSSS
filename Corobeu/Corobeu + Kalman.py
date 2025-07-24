@@ -6,7 +6,7 @@ import struct
 import signal
 import configs.wrapper_pb2 as wr
 import sys
-from config import IP_ARES, ID_ARES, COR_DO_TIME
+from configs.config import IP_KRATOS, ID_KRATOS, COR_DO_TIME
 
 import numpy as np
 
@@ -103,6 +103,14 @@ class Corobeu:
         self.robot_id = robot_id
         self.vision_sock = vision_sock
         
+                # ...
+        self.error_sum       = 0.0
+        self.deriv_filtered  = 0.0
+        self.prev_error      = 0.0
+        self.integral_limit  = 5.0
+        # constante de filtro (pode ser ajustada)
+        self.tau_derivative  = 0.05  
+        
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -124,7 +132,7 @@ class Corobeu:
         self.kf = KalmanFilter(
             dt = self.dt,
             u_x = 0, u_y = 0,
-            std_acc = 0.5,
+            std_acc = 2.0,
             x_std_meas=0.01,
             y_std_meas=0.01
             )
@@ -155,7 +163,7 @@ class Corobeu:
                 obstacles.append((robot.x / 1000, robot.y / 1000))
 
         # Encontra nosso robô e atualiza o filtro
-        robots = getattr(frame.detection, COR_DO_TIME)
+        robots = getattr(frame.detection, self._robot_attr)
         for robot in robots:
             if robot.robot_id == self.robot_id:
                 # Posição medida pela câmera (em metros)
@@ -209,11 +217,7 @@ class Corobeu:
     
     def follow_ball(self):
         a = 1
-        interror_phi = Integral_part_phi = fant_phi = 0
         phi_obs = 0
-        omega_ant = 0
-        angulo_anterior_phid = 0
-        angulo_anterior_phi_robot = 0
         
         x_ant = 0
         y_ant = 0
@@ -232,72 +236,102 @@ class Corobeu:
                 continue
 
             phid = math.atan2((ball_y - y), (ball_x - x))
-            if phid > 3.15:
-                phid = phid - 6.2832
-
-            # Calcula la diferencia entre el ángulo actual y el anterior
-            diferencia_phid = phid - angulo_anterior_phid
-            diferencia_phi  = phi_obs - angulo_anterior_phi_robot
-            # Si la diferencia es mayor que π, ajusta restando 2π
-            if diferencia_phid > math.pi:
-                phid -= 2 * math.pi
-            # Si la diferencia es menor que -π, ajusta sumando 2π
-            elif diferencia_phid < -math.pi:
-                phid += 2 * math.pi
+            phid = self.wrap_angle(phid)
+            phi_obs = self.wrap_angle(phi_obs)
             
-            # Si la diferencia es mayor que π, ajusta restando 2π
-            if diferencia_phi > math.pi:
-                phi_obs -= 2 * math.pi
-            # Si la diferencia es menor que -π, ajusta sumando 2π
-            elif diferencia_phi < -math.pi:
-                phi_obs += 2 * math.pi
+            error_phi = self.wrap_angle(phid - phi_obs)
             
-            # Actualiza el ángulo anterior
-            angulo_anterior_phid = phid
-            angulo_anterior_phi_robot = phi_obs
-
-            error_phi = phid - phi_obs
-            
-            omega, fant_phi, interror_phi, Integral_part_phi = self.pid_controller(self.kp, self.ki, self.kd, self.dt, error_phi, interror_phi, fant_phi, Integral_part_phi)
-            
-
+            omega = self.pid_controller(self.dt, error_phi)
             error_distance = math.sqrt((ball_y - y)**2 + (ball_x - x)**2)
             error_distance_global = math.sqrt((ball_y - y) ** 2 + (ball_x - x) ** 2)
             
             U = self.v_linear
+
+            #Evitando travamentos em paredes
             
-            current_time = time.time()
-
-            if current_time - self.last_speed_time >= self.dt:
-                
-                #Evitando travamentos em paredes
-                
-                if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
-                # if False:
-                    self.travado(x, y, x_ant, y_ant)
-
-                else:
-                    vl, vr = self.speed_control(U, omega)
-                    self.send_speed(vl + 30, vr)
-                    
-                self.last_speed_time = current_time
+            # if (abs(x_ant - x) <= 0.003 and abs(y_ant - y) <= 0.003):
+            # # if False:
+            #     self.travado(x, y, x_ant, y_ant)
+            # else:
+            vl, vr = self.speed_control(U, omega)
+            self.send_speed(0,0)
+            print(f"phid: {math.degrees(phid)}\nphi_obs:{math.degrees(phi_obs)}\nerror:{math.degrees(error_phi)}\nball_x{ball_x}\nball_y{ball_y}\n\n")
+            # self.send_speed(vl + 30, vr)
             
             x_ant = x
             y_ant = y       
+            time.sleep(self.dt)
+            
     
+    def follow_path(self, path_x, path_y):
+        a = 1
+        interror_phi = Integral_part_phi = fant_phi = 0
+        phi_obs = 0
+        
+        x_ant = 0
+        y_ant = 0
+        
 
-    def pid_controller(self, kp, ki, kd, dt, error, interror, fant, Integral_part):
-        Integral_saturation = 1
-        raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
-        Filter_e = 1 / (max(raizes) * 10)   
-        unomenosalfaana = math.exp(-(dt / Filter_e))
-        alfaana = 1 - unomenosalfaana
-        interror += error
-        f = unomenosalfaana * fant + alfaana * error
-        deerror = (f - fant) / dt if fant != 0 else f / dt
-        Integral_part = min(max(Integral_part + ki * interror * dt, -Integral_saturation), Integral_saturation)
-        PID = kp * error + Integral_part + deerror * kd
-        return PID, f, interror, Integral_part
+        while a == 1:
+            state = self.update_state()[0:4]
+            
+            if state[0] is None:
+                time.sleep(dt)
+                continue
+            
+            (x, y), (x_speed, y_speed), phi_obs, (ball_x, ball_y) = state
+
+            if x is None or y is None:
+                continue
+
+            phid = math.atan2((path_y - y), (path_x - x))
+            phid = self.wrap_angle(phid)
+            phi_obs = self.wrap_angle(phi_obs)
+            
+            error_phi = self.wrap_angle(phid - phi_obs)
+            omega = self.pid_controller(self.dt, error_phi)
+            
+
+            error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
+            # error_distance_global = math.sqrt((path_y - y) ** 2 + (path_x - x) ** 2)
+            
+            U = self.v_linear
+             
+            print(f"phid: {phid}\nphi_obs:{phi_obs}\nball_x{ball_x}\nball_y{ball_y}\n\n")
+            
+            vl, vr = self.speed_control(U, omega)
+            # self.send_speed(vl + 30, vr)
+            self.send_speed(0,0)
+            
+            if (error_distance <= 0.07):
+                self.send_speed(0,0)
+                self.off()
+            
+            time.sleep(self.dt)
+            
+    def pid_controller(self, error: float, dt: float) -> float:
+        # 1) Integral com anti‐windup
+        self.error_sum += error * dt
+        # limitação do integral
+        self.error_sum = max(-self.integral_limit,
+                             min(self.integral_limit,
+                                 self.error_sum))
+
+        # 2) Derivada com filtro de 1ª ordem
+        alpha = dt / (self.tau_derivative + dt)
+        raw_derivative = (error - self.prev_error) / dt
+        # filtra a derivada
+        self.deriv_filtered = (1 - alpha)*self.deriv_filtered + alpha*raw_derivative
+
+        # 3) PID output
+        output = (self.kp * error +
+                  self.ki * self.error_sum +
+                  self.kd * self.deriv_filtered)
+
+        # 4) Atualiza histórico
+        self.prev_error = error
+
+        return output
     
 
     def travado(self, x, y, x_ant, y_ant):
@@ -336,7 +370,7 @@ class Corobeu:
         return
     
     
-    def wrap_angle(angle):
+    def wrap_angle(self, angle):
         return (angle + math.pi) % (2*math.pi) - math.pi
     
     
@@ -350,16 +384,16 @@ class Corobeu:
 if __name__ == "__main__":
     VISION_IP = "224.5.23.2"
     VISION_PORT = 10015
-    ROBOT_IP = IP_ARES
+    ROBOT_IP = IP_KRATOS
     ROBOT_PORT = 80
-    ROBOT_ID = ID_ARES
+    ROBOT_ID = ID_KRATOS
+    
+    Kp = 6
+    Ki = 3.63
+    Kd = 2.46
 
-    Kp = 10
-    Ki = 2
-    Kd = 1.2
     dt = 0.1
     
-
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
     crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd, dt)
 
