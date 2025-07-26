@@ -54,9 +54,6 @@ class HandGestureDetector:
 
     def is_thumbs_up(self, fingers_status):
         return fingers_status == [1, 0, 0, 0, 0]
-    
-    def is_victory(self, finger_status):
-        return finger_status == [0, 1, 1, 0, 0] 
 
 
 # --- Loop Principal de Controle (VERSÃO FINAL com SUBPROCESS) ---
@@ -95,7 +92,6 @@ def main():
                 if fingers_status:
                     joinha = detector.is_thumbs_up(fingers_status)
                     mao_aberta = detector.is_open_hand(fingers_status)
-                    victory = detector.is_victory(fingers_status)
 
                     # INICIA o processo do robô
                     if joinha and estado_programa == 'PARADO':
@@ -110,17 +106,12 @@ def main():
                         print(">> Gesto MÃO ABERTA 🖐️: Enviando sinal de parada (Ctrl+C) ao processo do robô...")
                         # Envia o sinal SIGINT (equivalente ao Ctrl+C)
                         vsss_process.send_signal(signal.SIGINT)
-                        vsss_process.wait() # Espera o processo terminar
+                        # vsss_process.wait() # Espera o processo terminar
                         vsss_process = None
                         estado_programa = 'PARADO'
                         print(">> Processo do robô parado. Aguardando novo comando...")
                         time.sleep(2)
-                    
-                    elif victory:
-                        print(">> Gesto VITÓRIA: Enviando sinal de parada (Ctrl+C) progama.")
-                        raise KeyboardInterrupt
                         
-
             # Verifica se o processo terminou por conta própria
             if vsss_process and vsss_process.poll() is not None:
                 print(">> Processo do robô terminou inesperadamente.")

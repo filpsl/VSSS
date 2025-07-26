@@ -186,23 +186,23 @@ class Corobeu:
         
         # Só atualizamos a integral se a saída PROVISÓRIA estiver dentro dos limites.
         # Isso evita que a integral cresça indefinidamente quando a saída já está no máximo.
-        provisional_output = proportional_term + self.ki * potential_integral + derivative_term
-        if self.omega_min < provisional_output < self.omega_max:
+        provisional_omega = proportional_term + self.ki * potential_integral + derivative_term
+        if self.omega_min < provisional_omega < self.omega_max:
             self.integral = potential_integral
             
         integral_term = self.ki * self.integral
         
         # --- 4. Soma Final e Saturação da Saída ---
         # Combina os três termos para obter a saída final do controlador.
-        output = proportional_term + integral_term + derivative_term
+        omega = proportional_term + integral_term + derivative_term
         
         # Garante que a saída final NUNCA exceda os limites definidos.
-        output = max(min(output, self.omega_max), self.omega_min)
+        omega = max(min(omega, self.omega_max), self.omega_min)
         
         # --- 5. Atualização das Variáveis de Estado para a Próxima Iteração ---
         self.previous_error = error
         self.filtered_previous_error = filtered_error
-        return output
+        return omega
     
     
     def wrap_angle(self, angle):
@@ -227,7 +227,6 @@ if __name__ == "__main__":
     Kd = 2.46
     
     dt = 0.1
-    
     omega_max = 15
     
     # Kp = 10
