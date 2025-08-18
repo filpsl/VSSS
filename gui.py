@@ -76,9 +76,18 @@ kill_all_btn.pack(pady=5)
 
 # Sair com segurança
 def on_closing():
-    if messagebox.askokcancel("Sair", "Deseja encerrar todos os robôs e sair?"):
+    result = messagebox.askyesnocancel(
+        "Sair",
+        "Deseja encerrar todos os robôs antes de sair?\n\n"
+        "Sim = encerrar todos\nNão = sair mantendo os robôs\nCancelar = voltar"
+    )
+    if result is True:  # Sim → matar todos
         kill_all_running_robots_cmd()
         root.destroy()
+    elif result is False:  # Não → sair sem matar
+        root.destroy()
+    # Cancelar → não faz nada
+
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
 root.mainloop()
