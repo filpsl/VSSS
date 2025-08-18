@@ -27,6 +27,9 @@
 #define PWM_MOTOR_RESOLUTION 8
 
 // Wifi settings
+// #define NETWORK "labmicro"
+// #define PASSWORD "l@bm!cro2023"
+
 #define NETWORK "Filipe"
 #define PASSWORD "iokf1342"
 

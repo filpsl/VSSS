@@ -11,7 +11,8 @@ LADO_DO_TIME = 0                            # 0 -> Esquerdo; 1 -> Direito
 
 "CONFIGURAÇÕES ESPECÍFICAS" 
 IP_ZEUS = "192.168.209.59"                  # Mesma vel
-IP_KRATOS = "192.168.141.16"                # + 28 VL
+# IP_KRATOS = "192.168.141.16"                # + 28 VL
+IP_KRATOS = "192.168.57.16"                # + 28 VL
 IP_ARES = "192.168.141.16"                  # Bateria fraca/Rodas Diferentes
 
 ID_ZEUS = 3 

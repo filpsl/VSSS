@@ -127,7 +127,7 @@ class Corobeu:
             if current_time - self.last_speed_time >= self.dt:
                 
                 vl, vr = self.speed_control(U, omega)
-                self.send_speed(vl + 25, vr)
+                self.send_speed(vl, vr)
 
                 self.last_speed_time = current_time
     
@@ -157,7 +157,7 @@ class Corobeu:
             if current_time - self.last_speed_time >= self.dt:
                 
                 vl, vr = self.speed_control(U, omega)
-                self.send_speed(vl + 25, vr)
+                self.send_speed(vl, vr)
                 
                 self.last_speed_time = current_time
             
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     ROBOT_ID = ID_KRATOS
     ROBOT_PORT = 80
     
-    Kp = 8
+    Kp = 6
     Ki = 3.63
     Kd = 2.46
     
@@ -236,4 +236,4 @@ if __name__ == "__main__":
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
     crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd, dt, omega_max)
 
-    crb01.follow_path(0.4, 0.4)
+    crb01.follow_ball()
