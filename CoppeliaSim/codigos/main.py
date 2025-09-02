@@ -1,13 +1,5 @@
-import socket
-
-from vssproto.simulation.command_pb2 import Command, Commands
-from vssproto.simulation.common_pb2 import Frame
-from vssproto.simulation.packet_pb2 import Environment, Packet
-
-import socket
 import time
 import math
-import struct
 import sim
 import signal
 import sys
@@ -241,11 +233,12 @@ if __name__ == "__main__":
     COR_DO_TIME = 0
     
     Kp = 0.3629
-    Ki = 0.1891    
+    # Ki = 0.1891
+    Ki = 0    
     Kd = 0.0001
     
     dt = 0.1
-    omega_max = 4
+    omega_max = 8
     
     # Kp = 10
     # Ki = 3.63
