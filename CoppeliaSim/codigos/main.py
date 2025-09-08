@@ -137,9 +137,8 @@ class Corobeu:
                 current_time = time.time()
                 if current_time - self.last_speed_time >= self.dt:
 
-                    # print(f"PHI_OBS= {phi_obs}\\ERRO: {error_phi}\\-------------------\\")
                     vl, vr = self.speed_control(U, omega)
-                    print(vl,vr)
+                    
                     sim.simxSetJointTargetVelocity(clientID, motorE, vl, sim.simx_opmode_blocking)
                     sim.simxSetJointTargetVelocity(clientID, motorD, vr, sim.simx_opmode_blocking)
 
@@ -235,7 +234,7 @@ if __name__ == "__main__":
     Kp = 0.3629
     # Ki = 0.1891
     Ki = 0    
-    Kd = 0.0001
+    Kd = 0.1
     
     dt = 0.1
     omega_max = 8
