@@ -26,7 +26,7 @@
  */
 Robot::Robot(uint8_t pin_R1, uint8_t pin_L1, uint8_t pin_R2, uint8_t pin_L2, uint8_t encoderAL, uint8_t encoderBL, uint8_t encoderAR, uint8_t encoderBR)
     : motorRight(pin_R1, pin_L1, ROBOT_CHANEL_1R, ROBOT_CHANEL_1L),
-      motorLeft(pin_R2, pin_L2, ROBOT_CHANEL_2R, ROBOT_CHANEL_2L),
+      motorLeft(pin_L2, pin_R2, ROBOT_CHANEL_2R, ROBOT_CHANEL_2L),
       encoderLeft(encoderAL, encoderBL),
       encoderRight(encoderAR, encoderBR)  {
     this->pin_R1_ = pin_R1;

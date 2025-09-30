@@ -64,7 +64,7 @@ class Corobeu:
         
         self.v_max = 8
         self.v_min = -8
-        self.v_linear = 4
+        self.v_linear = 8
         self.phi = 0
         
         self.last_speed_time = time.time()
@@ -231,17 +231,25 @@ if __name__ == "__main__":
     ROBOT_PORT = 80
     COR_DO_TIME = 0
     
-    Kp = 0.3629
-    # Ki = 0.1891
-    Ki = 0    
-    Kd = 0.1
+    # kp = 0.3629
+    # ki = 0.1891
+    # # Ki = 0    
+    # kd = 0.1
     
-    dt = 0.1
+    # kp = 1.74224697 
+    # ki = 0.18891695 
+    # kd = 0.41242249
+    
+    kp = 3.195983       #
+    ki = 0.02434838     # ERRO: 46
+    kd = 0.27948516     #
+    
+    dt = 0.05
     omega_max = 8
     
     # Kp = 10
     # Ki = 3.63
     # Kd = 2.46
     
-    crb01 = Corobeu(Kp, Ki, Kd, dt, omega_max)
+    crb01 = Corobeu(kp, ki, kd, dt, omega_max)
     crb01.follow_ball()
