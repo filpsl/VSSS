@@ -1,6 +1,6 @@
 import time
 import math
-import sim
+import sims.sim as sim
 import signal
 import sys
 
@@ -66,7 +66,7 @@ class Corobeu:
         # --- Parâmetros Físicos e de Movimento do Robô ---
         self.v_max = 8
         self.v_min = -8
-        self.v_linear = 4
+        self.v_linear = 6
         
         # --- Variáveis da Máquina de Estados ---
         self.current_state = STATE_ATTACKING_BALL
@@ -248,15 +248,13 @@ class Corobeu:
 # PONTO DE ENTRADA DO PROGRAMA
 if __name__ == "__main__":
     
-    # --- Parâmetros de Controle (Tuning do PID) ---
-    # Estes valores precisam de ajuste fino para o seu robô!
-    Kp = 0.36   # Ganho Proporcional: Reage ao erro atual. Aumente para respostas mais rápidas.
-    Ki = 0.01   # Ganho Integral: Corrige erros residuais. Cuidado, valores altos causam instabilidade.
-    Kd = 0.1   # Ganho Derivativo: Amortece a oscilação. Aumente para reduzir o "overshoot".
+    kp = 3.0528502  
+    kd = 0.79546531
+    ki = 0
     
     dt = 0.05  # Tempo de ciclo do controlador (50 ms)
     omega_max = 8 # Velocidade angular máxima (rad/s)
     
     # --- Inicialização e Execução ---
-    crb01 = Corobeu(Kp, Ki, Kd, dt, omega_max)
+    crb01 = Corobeu(kp, ki, kd, dt, omega_max)
     crb01.run_strategy()

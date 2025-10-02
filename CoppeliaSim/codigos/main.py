@@ -1,6 +1,6 @@
 import time
 import math
-import sim
+import sims.sim as sim
 import signal
 import sys
 
@@ -40,27 +40,16 @@ def connect_CRB(port):
         return clientID, robot, MotorE, MotorD, ball
 
 class Corobeu:
-    def __init__(self, kp, ki, kd, dt, omega_max):
+    def __init__(self, kp, ki, kd, dt):
         
         self.kp = kp
         self.ki = ki
         self.kd = kd
         self.dt = dt
-        
-        # --- Limites de Saída (para anti-windup e segurança) ---
-        self.omega_min = -omega_max
-        self.omega_max = omega_max
-        
-        # --- Filtro para o Termo Derivativo (para suavizar ruídos) ---
-        # Um valor de 'alpha' próximo de 1 significa pouca filtragem.
-        # Um valor próximo de 0 significa muita filtragem.
-        # Uma boa regra é começar com um alpha ~0.5 e ajustar.
-        self.filter_alpha = 0.5 
-        
-        # --- Variáveis de Estado (precisam ser lembradas entre as chamadas) ---
-        self.integral = 0.0
-        self.previous_error = 0.0
-        self.filtered_previous_error = 0.0
+
+        self.f_ant = 0
+        self.interror = 0
+        self.Integral_part = 0
         
         self.v_max = 8
         self.v_min = -8
@@ -179,41 +168,20 @@ class Corobeu:
             
 
     def pid_controller(self, error):
-        # --- 1. Termo Proporcional (P) ---
-        # A resposta instantânea ao erro atual.
-        proportional_term = self.kp * error
         
-        # --- 2. Termo Derivativo (D) com Filtro ---
-        # Previne o "derivative kick" (pico na derivada) e suaviza ruídos.
-        # Primeiro, filtramos o erro atual.
-        filtered_error = (self.filter_alpha * error) + (1 - self.filter_alpha) * self.filtered_previous_error
+        Integral_saturation = 5
+        raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
+        Filter_e = 1 / (max(raizes) * 10)   
+        unomenosalfaana = math.exp(-(self.dt / Filter_e))
+        alfaana = 1 - unomenosalfaana
+        self.interror += error
+        f = unomenosalfaana * self.f_ant + alfaana * error
+        self.f_ant = f
+        deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
+        self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        PID = kp * error + self.Integral_part + deerror * kd
+        return PID
         
-        # Calculamos a derivada sobre o erro filtrado.
-        derivative_term = self.kd * (filtered_error - self.filtered_previous_error) / self.dt
-        
-        # --- 3. Termo Integral (I) com Anti-Windup Condicional ---
-        # Acumula o erro para eliminar o erro em regime estacionário.
-        # A lógica de anti-windup é aplicada aqui.
-        potential_integral = self.integral + error * self.dt
-        
-        # Só atualizamos a integral se a saída PROVISÓRIA estiver dentro dos limites.
-        # Isso evita que a integral cresça indefinidamente quando a saída já está no máximo.
-        provisional_omega = proportional_term + self.ki * potential_integral + derivative_term
-        if self.omega_min < provisional_omega < self.omega_max:
-            self.integral = potential_integral
-            
-        integral_term = self.ki * self.integral
-        
-        # --- 4. Soma Final e Saturação da Saída ---
-        # Combina os três termos para obter a saída final do controlador.
-        omega = proportional_term + integral_term + derivative_term
-        
-        # Garante que a saída final NUNCA exceda os limites definidos.
-        omega = max(min(omega, self.omega_max), self.omega_min)
-        
-        # --- 5. Atualização das Variáveis de Estado para a Próxima Iteração ---
-        self.previous_error = error
-        self.filtered_previous_error = filtered_error
         return omega
     
     
@@ -236,20 +204,23 @@ if __name__ == "__main__":
     # # Ki = 0    
     # kd = 0.1
     
-    # kp = 1.74224697 
-    # ki = 0.18891695 
-    # kd = 0.41242249
+    # kp = 3.195983       #
+    # ki = 0.02434838     # ERRO: 46
+    # kd = 0.27948516     #
     
-    kp = 3.195983       #
-    ki = 0.02434838     # ERRO: 46
-    kd = 0.27948516     #
+    # kp = 3.09724156         #
+    # ki = 0.02232751         # ERRO: 44
+    # kd = 0.22432429         #
+    
+    kp = 3.0528502  
+    kd = 0.79546531
+    ki = 0
     
     dt = 0.05
-    omega_max = 8
     
     # Kp = 10
     # Ki = 3.63
     # Kd = 2.46
     
-    crb01 = Corobeu(kp, ki, kd, dt, omega_max)
+    crb01 = Corobeu(kp, ki, kd, dt)
     crb01.follow_ball()

@@ -1,6 +1,6 @@
 import time
 import math
-import sim
+import sims.sim as sim
 import numpy as np
 import signal
 import sys
@@ -49,16 +49,19 @@ def algoritmo_pso(S, N, iteracoes_max):
     iteracoes_max = iteracoes_max       # Iterações máximas antes do código parar
     c1 = 2.05                           # Coeficiente individual
     c2 = 2.05                           # Coeficiente social
-    v_max = 2                           # Velocidade máxima
+    v_max_kp = 0.3                           # Velocidade máxima
+    v_max_ki = 0.1
+    v_max_kd = 0.07
+    v_max = 0
     w0 = 0.9                            # Fator de inercia inicial
     w1 = 0.3                            # Fator de inercia final
     w_passo = (w1 - w0)/iteracoes_max   # Passo (diminuir o fator de inercial lentamente até o final)
     kp_max = 8
-    ki_max = 1.5
+    ki_max = 3
     kd_max = 2
     
     # INICIALIZANDO OS PID
-    coluna1 = np.random.rand(S) * 5 + 3
+    coluna1 = np.random.rand(S) * kp_max
     coluna2 = np.random.rand(S) * ki_max
     coluna3 = np.random.rand(S) * kd_max
     x = np.hstack((coluna1.reshape(-1, 1),
@@ -67,6 +70,8 @@ def algoritmo_pso(S, N, iteracoes_max):
 
     # INICIALIZANDO O ENXAME
     v = np.random.uniform(-0.1, 0.1, (S, N))
+    
+    x[0] = [3.195983, 0.02434838, 0.27948516]
     
     # INICIALIZANDO O ROBÔ
     crb01 = Corobeu(0.05, 8)
@@ -122,18 +127,26 @@ def algoritmo_pso(S, N, iteracoes_max):
                     v[i, j] = w0 * v[i, j] + c1 * r1 * (y[i, j] - x[i, j]) + c2 * r2 * (ys_posicao[j] - x[i, j])
 
                 # Limita a velocidade (clamping)
+                if (j == 0):
+                    v_max = v_max_kp
+                elif (j == 1):
+                    v_max = v_max_ki
+                else:
+                    v_max = v_max_kd
+                
                 v[i, j] = np.clip(v[i, j], -v_max, v_max)
 
                 # Atualiza a posição
                 x[i, j] = x[i, j] + v[i, j]
                 
                 # Lógica de contenção de limites (sem alterações)
-                if (x[i, j] > 8 and j == 0):
+                if (x[i, j] > kp_max and j == 0):
                     x[i, j] = kp_max - np.random.rand()*2
-                if (x[i, j] > 3 and j == 1):
-                    x[i, j] = ki_max - np.random.rand()
-                if (x[i, j] > 1 and j == 2):
+                if (x[i, j] > ki_max and j == 1):
+                    x[i, j] = ki_max - np.random.rand()*0.5
+                if (x[i, j] > kd_max and j == 2):
                     x[i, j] = kd_max - np.random.rand()*0.1
+                    
                 if (x[i, j] < 3 and j == 0):
                     x[i, j] = 3 + np.random.rand()
                 if (x[i, j] < 0 and j == 1):
@@ -149,7 +162,7 @@ def algoritmo_pso(S, N, iteracoes_max):
             particula = x[c]
             erro_particula = fitnessFunc(crb01, particula)
             sim.simxSetObjectPosition(crb01.clientID, crb01.robot, -1, [-0.4, -0.4, 0.01], sim.simx_opmode_oneshot)
-            print(f"Partícula[{c}]: {particula} - Erro: {erro_particula} - Menor Erro: {ys_fitness}\n")
+            print(f"Partícula[{c}]: {particula} - Erro: {erro_particula} - Menor Erro: {ys_fitness} - Melhor partícula {ys_posicao}\n")
             
             if erro_particula < erros[c]:
                 erros[c] = erro_particula 
@@ -238,6 +251,11 @@ class Corobeu:
 
 
     def cacar_pid(self, PID):
+        
+        self.integral = 0.0
+        self.previous_error = 0.0
+        self.filtered_previous_error = 0.0
+        
         kp, ki, kd = PID[0], PID[1], PID[2]
         path = [[0.4, 0.4],
                 [-0.4, 0.4],

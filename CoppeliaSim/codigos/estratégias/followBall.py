@@ -28,42 +28,12 @@ Finally comment:
 
 
 import math
-import sim
-import numpy as np
+import simm.sim as sim
 import math as mat
+import numpy as np
 import time
 
-class Corobeu():
-    """"
-    Corobeu class is the principal class to controller the EVA positions robots.
-        __init___               = Function to inicializate the global variables
-        connect_CRB             = Present the connection with the coppeliaSim
-        Speed_CRB               = Calculated the wheels speeds based on the robot topology (in this case is a differential robot)
-        PID_Controller_phi      = Implement the PID based on the phi error
-        Robot_CRB               = The principal function in this class.
-    """""
-
-    def __init__(self):
-
-        """"
-            Initializations global variables
-            self.y_out    (float list) = Out position robot in the y axis
-            self.x_out    (Float list) = Out position robot in the x axis
-            self.phi      (Float)   = phi robot value
-            self.v_max    (Integer) = max speed for the robot
-            self.v_min    (Integer) = min speed for the robot
-            self.posError (Float list) = phi error
-        """""
-
-        self.y_out = []
-        self.x_out = []
-        self.phi = 0
-        self.v_max = 8
-        self.v_min = -8
-        self.v_linear = 5
-        self.posError = []
-
-    def connect_CRB(self, port):
+def connect_CRB(port):
         """""
         Function used to communicate with CoppeliaSim
             argument :
@@ -98,7 +68,40 @@ class Corobeu():
                
         return clientID, robot, MotorE, MotorD, ball
     
-    def Speed_CRB(self, U, omega, error_distance, ballY, robotY):
+
+
+class Corobeu():
+    """"
+    Corobeu class is the principal class to controller the EVA positions robots.
+        __init___               = Function to inicializate the global variables
+        connect_CRB             = Present the connection with the coppeliaSim
+        Speed_CRB               = Calculated the wheels speeds based on the robot topology (in this case is a differential robot)
+        PID_Controller_phi      = Implement the PID based on the phi error
+        Robot_CRB               = The principal function in this class.
+    """""
+
+    def __init__(self):
+
+        """"
+            Initializations global variables
+            self.y_out    (float list) = Out position robot in the y axis
+            self.x_out    (Float list) = Out position robot in the x axis
+            self.phi      (Float)   = phi robot value
+            self.v_max    (Integer) = max speed for the robot
+            self.v_min    (Integer) = min speed for the robot
+            self.posError (Float list) = phi error
+        """""
+
+        self.y_out = []
+        self.x_out = []
+        self.phi = 0
+        self.v_max = 8
+        self.v_min = -8
+        self.v_linear = 5
+        self.posError = []
+
+
+    def Speed_CRB(self, U, omega, error_distance, Number_Iterations):
 
         """""
         Function used to calculate the speed for each wheel based on the topology robot
@@ -146,14 +149,10 @@ class Corobeu():
         if vl <= Min_Speed:
             vl = Min_Speed
 
-        if robotY > ballY:
-            vl = -vl
-            vd = -vd
-
         ### When arrive to the goal ###
 
         if error_distance <= 0.03:
-            # a = 0
+            a = 0
             vl = 0
             vd = 0
 
@@ -238,7 +237,7 @@ class Corobeu():
 
         ### Get the objects within coppeliaSim using the connect_CRB function ###
 
-        (clientID, robot, motorE, motorD, ball) = self.connect_CRB(19995)
+        (clientID, robot, motorE, motorD, ball) = connect_CRB(19995)
 
         ### Criterio to simulation ###
 
@@ -284,7 +283,7 @@ class Corobeu():
 
                     ### Calculate the phid (see georgia tech course) ###
                     
-                    phid = math.atan2(ballPos[1] - positiona[1], -0.7 - positiona[0])
+                    phid = math.atan2(ballPos[1] - positiona[1], ballPos[0] - positiona[0])
                     ### Phi error to send the PID controller
 
                     error_phi = phid - self.phi
@@ -297,7 +296,7 @@ class Corobeu():
 
                     ### Calculate the distance error, the robot stop when arrive the ball ###
 
-                    error_distance = math.sqrt((ballPos[1] - positiona[1]) ** 2)
+                    error_distance = math.sqrt((ballPos[1] - positiona[1]) ** 2 + (ballPos[0] - positiona[0]) ** 2)
 
                     ### Acumulative distance error ###
 
@@ -311,7 +310,7 @@ class Corobeu():
 
                     ### Calculate the speed right and left based on the topology robot ###
 
-                    vl, vd, a = self.Speed_CRB(self.v_linear, omega, error_distance, ballPos[1], positiona[1])
+                    vl, vd, a = self.Speed_CRB(self.v_linear, omega, error_distance, Number_Iterations)
 
 
                     ### Send the speed values to coppeliasim simulato ###
