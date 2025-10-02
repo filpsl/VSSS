@@ -18,7 +18,7 @@ def init_vision_socket(VISION_IP="224.5.23.2", VISION_PORT=10015):
     return sock
 
 class Corobeu:
-    def __init__(self, robot_ip, robot_port, robot_id, vision_sock, kp, ki, kd, dt, omega_max):
+    def __init__(self, robot_ip, robot_port, robot_id, vision_sock, kp, ki, kd, dt):
         self.robot_ip = robot_ip
         self.robot_port = robot_port
         self.robot_id = robot_id
@@ -29,24 +29,13 @@ class Corobeu:
         self.kd = kd
         self.dt = dt
         
-        # --- Limites de Saída (para anti-windup e segurança) ---
-        self.omega_min = -omega_max
-        self.omega_max = omega_max
+        self.f_ant = 0
+        self.interror = 0
+        self.Integral_part = 0        
         
-        # --- Filtro para o Termo Derivativo (para suavizar ruídos) ---
-        # Um valor de 'alpha' próximo de 1 significa pouca filtragem.
-        # Um valor próximo de 0 significa muita filtragem.
-        # Uma boa regra é começar com um alpha ~0.5 e ajustar.
-        self.filter_alpha = 0.5 
-        
-        # --- Variáveis de Estado (precisam ser lembradas entre as chamadas) ---
-        self.integral = 0.0
-        self.previous_error = 0.0
-        self.filtered_previous_error = 0.0
-        
-        self.   v_max = 225
+        self.v_max = 225
         self.v_min = 70
-        self.v_linear = 225
+        self.v_linear = 140
         self.phi = 0
         
         self.last_speed_time = time.time()
@@ -105,33 +94,34 @@ class Corobeu:
         phi_obs = 0
 
         while True:
-
-            x, y, phi_obs, ball_x, ball_y = self.get_position()
-
-            if x is None or y is None:
-                continue
-
-            phid = math.atan2((ball_y - y), (ball_x - x))
-            phid = self.wrap_angle(phid)
-            phi_obs = self.wrap_angle(phi_obs)
             
-            error_phi = self.wrap_angle(phid - phi_obs)
-            omega = self.pid_controller(error_phi)
-            
-            error_distance = math.sqrt((ball_y - y)**2 + (ball_x - x)**2)
-            error_distance_global = math.sqrt((ball_y - y) ** 2 + (ball_x - x) ** 2)
-            
-            U = self.v_linear
             current_time = time.time()
 
             if current_time - self.last_speed_time >= self.dt:
-                
+                x, y, phi_obs, ball_x, ball_y = self.get_position()
+
+                if x is None or y is None:
+                    continue
+
+                phid = math.atan2((ball_y - y), (ball_x - x))
+                phid = self.wrap_angle(phid)
+                phi_obs = self.wrap_angle(phi_obs)
+
+                error_phi = self.wrap_angle(phid - phi_obs)
+                omega = self.pid_controller(error_phi)
+
+                error_distance = math.sqrt((ball_y - y)**2 + (ball_x - x)**2)
+                error_distance_global = math.sqrt((ball_y - y) ** 2 + (ball_x - x) ** 2)
+
+                U = self.v_linear
+
                 vl, vr = self.speed_control(U, omega)
-                self.send_speed(vl, vr)
+                print(f"VL: {vl} VR: {vr} + 60")
+                #self.send_speed(vl, vr + 60)
 
                 self.last_speed_time = current_time
-    
-    
+
+
     def follow_path(self, path_x, path_y):
         phi_obs = 0
 
@@ -157,7 +147,7 @@ class Corobeu:
             if current_time - self.last_speed_time >= self.dt:
                 
                 vl, vr = self.speed_control(U, omega)
-                self.send_speed(vl, vr)
+                self.send_speed(vl, vr + 60)
                 
                 self.last_speed_time = current_time
             
@@ -167,42 +157,19 @@ class Corobeu:
             
 
     def pid_controller(self, error):
-        # --- 1. Termo Proporcional (P) ---
-        # A resposta instantânea ao erro atual.
-        proportional_term = self.kp * error
-        
-        # --- 2. Termo Derivativo (D) com Filtro ---
-        # Previne o "derivative kick" (pico na derivada) e suaviza ruídos.
-        # Primeiro, filtramos o erro atual.
-        filtered_error = (self.filter_alpha * error) + (1 - self.filter_alpha) * self.filtered_previous_error
-        
-        # Calculamos a derivada sobre o erro filtrado.
-        derivative_term = self.kd * (filtered_error - self.filtered_previous_error) / self.dt
-        
-        # --- 3. Termo Integral (I) com Anti-Windup Condicional ---
-        # Acumula o erro para eliminar o erro em regime estacionário.
-        # A lógica de anti-windup é aplicada aqui.
-        potential_integral = self.integral + error * self.dt
-        
-        # Só atualizamos a integral se a saída PROVISÓRIA estiver dentro dos limites.
-        # Isso evita que a integral cresça indefinidamente quando a saída já está no máximo.
-        provisional_omega = proportional_term + self.ki * potential_integral + derivative_term
-        if self.omega_min < provisional_omega < self.omega_max:
-            self.integral = potential_integral
-            
-        integral_term = self.ki * self.integral
-        
-        # --- 4. Soma Final e Saturação da Saída ---
-        # Combina os três termos para obter a saída final do controlador.
-        omega = proportional_term + integral_term + derivative_term
-        
-        # Garante que a saída final NUNCA exceda os limites definidos.
-        omega = max(min(omega, self.omega_max), self.omega_min)
-        
-        # --- 5. Atualização das Variáveis de Estado para a Próxima Iteração ---
-        self.previous_error = error
-        self.filtered_previous_error = filtered_error
-        return omega
+
+        Integral_saturation = 5
+        raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
+        Filter_e = 1 / (max(raizes) * 10)   
+        unomenosalfaana = math.exp(-(self.dt / Filter_e))
+        alfaana = 1 - unomenosalfaana
+        self.interror += error
+        f = unomenosalfaana * self.f_ant + alfaana * error
+        deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
+        self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        self.f_ant = f
+        PID = kp * error + self.Integral_part + deerror * kd
+        return PID
     
     
     def wrap_angle(self, angle):
@@ -222,18 +189,17 @@ if __name__ == "__main__":
     ROBOT_ID = ID_KRATOS
     ROBOT_PORT = 80
     
-    Kp = 6
-    Ki = 3.63
-    Kd = 2.46
+    kp = 3.0528502  
+    kd = 0.79546531
+    ki = 0
+
+    dt = 0.2
     
-    dt = 0.1
-    omega_max = 15
-    
-    # Kp = 10
-    # Ki = 3.63
-    # Kd = 2.46
+    kp = 10
+    ki = 3.63
+    kd = 2.46
     
     vision_sock = init_vision_socket(VISION_IP, VISION_PORT)
-    crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, Kp, Ki, Kd, dt, omega_max)
+    crb01 = Corobeu(ROBOT_IP, ROBOT_PORT, ROBOT_ID, vision_sock, kp, ki, kd, dt)
 
     crb01.follow_ball()

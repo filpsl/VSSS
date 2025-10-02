@@ -181,8 +181,6 @@ class Corobeu:
         self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
         PID = kp * error + self.Integral_part + deerror * kd
         return PID
-        
-        return omega
     
     
     def wrap_angle(self, angle):
