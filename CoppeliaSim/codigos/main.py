@@ -176,9 +176,9 @@ class Corobeu:
         alfaana = 1 - unomenosalfaana
         self.interror += error
         f = unomenosalfaana * self.f_ant + alfaana * error
-        self.f_ant = f
         deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
         self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
         return PID
     

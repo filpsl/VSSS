@@ -313,8 +313,8 @@ class Corobeu:
         unomenosalfaana = math.exp(-(self.dt / Filter_e))
         alfaana = 1 - unomenosalfaana
         f = unomenosalfaana * self.f_ant + alfaana * error
-        self.f_ant = f
         deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
+        self.f_ant = f
         PID = kp * error + deerror * kd
         return PID
     
