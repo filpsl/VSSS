@@ -49,19 +49,19 @@ def algoritmo_pso(S, N, iteracoes_max):
     iteracoes_max = iteracoes_max       # Iterações máximas antes do código parar
     c1 = 2.05                           # Coeficiente individual
     c2 = 2.05                           # Coeficiente social
-    v_max_kp = 0.3                           # Velocidade máxima
-    v_max_ki = 0.1
-    v_max_kd = 0.07
+    v_max_kp = 2                           # Velocidade máxima
+    v_max_ki = 1
+    v_max_kd = 0.2
     v_max = 0
     w0 = 0.9                            # Fator de inercia inicial
     w1 = 0.3                            # Fator de inercia final
     w_passo = (w1 - w0)/iteracoes_max   # Passo (diminuir o fator de inercial lentamente até o final)
     kp_max = 8
     ki_max = 3
-    kd_max = 2
+    kd_max = 0.5
     
     # INICIALIZANDO OS PID
-    coluna1 = np.random.rand(S) * kp_max
+    coluna1 = np.random.rand(S) * 5 + 3
     coluna2 = np.random.rand(S) * ki_max
     coluna3 = np.random.rand(S) * kd_max
     x = np.hstack((coluna1.reshape(-1, 1),
@@ -71,10 +71,8 @@ def algoritmo_pso(S, N, iteracoes_max):
     # INICIALIZANDO O ENXAME
     v = np.random.uniform(-0.1, 0.1, (S, N))
     
-    x[0] = [3.195983, 0.02434838, 0.27948516]
-    
     # INICIALIZANDO O ROBÔ
-    crb01 = Corobeu(0.05, 8)
+    crb01 = Corobeu(0.05)
     sim.simxSetObjectPosition(crb01.clientID, crb01.robot, -1, [-0.4, -0.4, 0.01], sim.simx_opmode_oneshot)
     
     # AVALIAÇÃO INICIAL
@@ -195,14 +193,15 @@ def fitnessFunc(crb01, particula):
 
 
 class Corobeu:
-    def __init__(self, dt, omega_max):
+    def __init__(self, dt):
 
         self.dt = dt
         self.checkpoint_dt = 2
 
-        self.f_ant = 0
-        self.interror = 0
+        self.integral_range = 30
+        self.interror = [0 for _ in range(self.integral_range)]
         self.Integral_part = 0  
+        self.f_ant = 0        
         
         self.v_max = 8
         self.v_min = -8
@@ -241,10 +240,7 @@ class Corobeu:
 
     def cacar_pid(self, PID):
         
-        self.integral = 0.0
-        self.previous_error = 0.0
-        self.filtered_previous_error = 0.0
-        
+        integral_counter = 0
         kp, ki, kd = PID[0], PID[1], PID[2]
         path = [[0.4, 0.4],
                 [-0.4, 0.4],
@@ -269,7 +265,12 @@ class Corobeu:
                 start_time = time.time()
 
                 # Este loop 'while' agora é responsável por ir para UM único alvo
-                while True:                       
+                while True:
+                    
+                    current_time = time.time()    
+                    if current_time - self.last_speed_time < self.dt:
+                        continue      
+                                 
                     s, robotPosition = sim.simxGetObjectPosition(self.clientID, self.robot, -1, sim.simx_opmode_streaming)
                     s, phi = sim.simxGetObjectOrientation(self.clientID, self.robot, -1, sim.simx_opmode_blocking)
 
@@ -289,26 +290,28 @@ class Corobeu:
 
                     error_phi_sum += abs(error_phi)
 
-                    omega = self.pid_controller(kp, ki, kd, error_phi)
+                    omega = self.pid_controller(kp, ki, kd, error_phi, integral_counter)
 
                     error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
 
                     U = self.v_linear  
+                    
+                    vl, vr = self.speed_control(U, omega)
+                    sim.simxSetJointTargetVelocity(self.clientID, self.motorE, vl, sim.simx_opmode_blocking)    
+                    sim.simxSetJointTargetVelocity(self.clientID, self.motorD, vr, sim.simx_opmode_blocking)
+                    self.last_speed_time = current_time
 
-                    current_time = time.time()
-
-                    if current_time - self.last_speed_time >= self.dt:
-                        vl, vr = self.speed_control(U, omega)
-                        sim.simxSetJointTargetVelocity(self.clientID, self.motorE, vl, sim.simx_opmode_blocking)    
-                        sim.simxSetJointTargetVelocity(self.clientID, self.motorD, vr, sim.simx_opmode_blocking)
-                        self.last_speed_time = current_time
-
+                    
+                    integral_counter += 1
+                    if integral_counter >= self.integral_range:
+                        integral_counter = 0
+                    
                     # LÓGICA 3: Se chegou ao alvo, quebra o loop 'while' para ir para o próximo ponto
                     if (error_distance < 0.07):
                         break
                     
                     # LÓGICA 4: Se o tempo esgotou, também quebra o loop
-                    if current_time - start_time >= 10:
+                    if current_time - start_time >= 5:
                         # Opcional: Penalizar o erro total se o tempo esgotou
                         error_phi_sum += 1000 # Adiciona uma grande penalidade
                         break
@@ -320,16 +323,17 @@ class Corobeu:
         return total_error
             
 
-    def pid_controller(self, kp, ki, kd, error):
+    def pid_controller(self, kp, ki, kd, error, integral_counter):
+        
         Integral_saturation = 5
         raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
         Filter_e = 1 / (max(raizes) * 10)   
         unomenosalfaana = math.exp(-(self.dt / Filter_e))
         alfaana = 1 - unomenosalfaana
-        self.interror += error
+        self.interror[integral_counter] = error
         f = unomenosalfaana * self.f_ant + alfaana * error
         deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
-        self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        self.Integral_part = min(max(self.Integral_part + ki * sum(self.interror) * self.dt, -Integral_saturation), Integral_saturation)
         self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
         return PID

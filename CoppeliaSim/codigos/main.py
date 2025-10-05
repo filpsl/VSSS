@@ -47,8 +47,9 @@ class Corobeu:
         self.kd = kd
         self.dt = dt
 
+        self.integral_range = 30
+        self.interror = list(0 for _ in range(self.integral_range))
         self.f_ant = 0
-        self.interror = 0
         self.Integral_part = 0
         
         self.v_max = 8
@@ -89,6 +90,7 @@ class Corobeu:
     
     def follow_ball(self):        
         phi_obs = 0
+        integral_counter = 0
         
         (clientID, robot, motorE, motorD, ball) = connect_CRB(19995)
         
@@ -98,7 +100,11 @@ class Corobeu:
             sim.simxSetJointTargetVelocity(clientID, motorD, 0, sim.simx_opmode_blocking)
             
             while True:
-                                
+                
+                current_time = time.time()
+                if current_time - self.last_speed_time < self.dt:
+                    continue
+                    
                 s, robotPosition = sim.simxGetObjectPosition(clientID, robot, -1, sim.simx_opmode_streaming)
                 s, ballPosition = sim.simxGetObjectPosition(clientID, ball, -1, sim.simx_opmode_streaming)
                 s, phi = sim.simxGetObjectOrientation(clientID, robot, -1, sim.simx_opmode_blocking)
@@ -117,67 +123,35 @@ class Corobeu:
                 phi_obs = self.wrap_angle(phi_obs)
 
                 error_phi = self.wrap_angle(phid - phi_obs)                
-                omega = self.pid_controller(error_phi)
+                omega = self.pid_controller(error_phi, integral_counter)
 
                 error_distance = math.sqrt((ball_y - y)**2 + (ball_x - x)**2)
                 error_distance_global = math.sqrt((ball_y - y) ** 2 + (ball_x - x) ** 2)
 
                 U = self.v_linear
-                current_time = time.time()
-                if current_time - self.last_speed_time >= self.dt:
 
-                    vl, vr = self.speed_control(U, omega)
-                    
-                    sim.simxSetJointTargetVelocity(clientID, motorE, vl, sim.simx_opmode_blocking)
-                    sim.simxSetJointTargetVelocity(clientID, motorD, vr, sim.simx_opmode_blocking)
-
-                    self.last_speed_time = current_time
-
-
-    def follow_path(self, path_x, path_y):
-        phi_obs = 0
-
-        while True:
-            x, y, phi_obs = self.get_position()[0:3]
-
-            if x is None or y is None:
-                continue
-
-            phid = math.atan2((path_y - y), (path_x - x))
-            phid = self.wrap_angle(phid)
-            phi_obs = self.wrap_angle(phi_obs)
-            
-            error_phi = self.wrap_angle(phid - phi_obs)
-            omega = self.pid_controller(error_phi)
-
-            error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
-            error_distance_global = math.sqrt((path_y - y) ** 2 + (path_x - x) ** 2)
-            
-            U = self.v_linear  
-            current_time = time.time()
-
-            if current_time - self.last_speed_time >= self.dt:
-                
                 vl, vr = self.speed_control(U, omega)
-                self.send_speed(vl, vr)
                 
+                sim.simxSetJointTargetVelocity(clientID, motorE, vl, sim.simx_opmode_blocking)
+                sim.simxSetJointTargetVelocity(clientID, motorD, vr, sim.simx_opmode_blocking)
                 self.last_speed_time = current_time
-            
-            if (error_distance <= 0.07):
-                self.off()
+                
+                integral_counter += 1
+                if integral_counter >= self.integral_range:
+                    integral_counter = 0
             
 
-    def pid_controller(self, error):
+    def pid_controller(self, error, integral_counter):
         
         Integral_saturation = 5
         raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
         Filter_e = 1 / (max(raizes) * 10)   
         unomenosalfaana = math.exp(-(self.dt / Filter_e))
         alfaana = 1 - unomenosalfaana
-        self.interror += error
+        self.interror[integral_counter] = error
         f = unomenosalfaana * self.f_ant + alfaana * error
         deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
-        self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        self.Integral_part = min(max(self.Integral_part + ki * sum(self.interror) * self.dt, -Integral_saturation), Integral_saturation)
         self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
         return PID
@@ -197,28 +171,7 @@ if __name__ == "__main__":
     ROBOT_PORT = 80
     COR_DO_TIME = 0
     
-    # kp = 0.3629
-    # ki = 0.1891
-    # # Ki = 0    
-    # kd = 0.1
-    
-    # kp = 3.195983       #
-    # ki = 0.02434838     # ERRO: 46
-    # kd = 0.27948516     #
-    
-    # kp = 3.09724156         #
-    # ki = 0.02232751         # ERRO: 44
-    # kd = 0.22432429         #
-    
-    kp = 3.0528502  
-    kd = 0.79546531
-    ki = 0
-    
     dt = 0.05
-    
-    # Kp = 10
-    # Ki = 3.63
-    # Kd = 2.46
     
     crb01 = Corobeu(kp, ki, kd, dt)
     crb01.follow_ball()
