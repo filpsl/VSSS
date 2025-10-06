@@ -154,7 +154,6 @@ class Corobeu:
         self.Integral_part = min(max(self.Integral_part + ki * sum(self.interror) * self.dt, -Integral_saturation), Integral_saturation)
         self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
-        print(f"PID: {PID}\n")
         return PID
     
     
@@ -175,8 +174,12 @@ if __name__ == "__main__":
     dt = 0.05
     
     kp = 3.45051784 
-    ki = 0.02365731 
+    ki = 0.02365731 # PSO
     kd = 0.06288346
+    
+    # kp = 3.23890261 
+    # ki = 0.07585873 # GOA 
+    # kd = 0.25113147
     
     crb01 = Corobeu(kp, ki, kd, dt)
     crb01.follow_ball()

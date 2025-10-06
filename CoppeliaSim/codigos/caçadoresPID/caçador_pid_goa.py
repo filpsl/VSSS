@@ -44,24 +44,25 @@ def connect_CRB(port):
 def algoritmo_goa(S, N, iter_max):
     
     # DEFINIÇÃO DO ESPAÇO DE BUSCA
-    limite_superior = 8
-    limite_inferior = -8
+    limite_superior = 4
+    limite_inferior = 0
     
     # PARÂMETROS DO ALGORITMO
     coeficiente_exploracao = 0.05
     coeficiente_refinamento = 0.5
-    coeficiente_pulo = 0.3
+    coeficiente_pulo = 0.1
     probabilidade_pulo = 0.1
     
     parasita_porcentagem = 0.2
     num_parasitas = math.ceil(parasita_porcentagem * S)
     
-    kp_max = 8
-    ki_max = 3
+    kp_max = 4.0
+    ki_max = 0.5
     kd_max = 0.5
+    param_min = 0.0
     
     # INICIALIZANDO OS PID
-    coluna1 = np.random.rand(S) * 5 + 3
+    coluna1 = np.random.rand(S) + 3.0
     coluna2 = np.random.rand(S) * ki_max
     coluna3 = np.random.rand(S) * kd_max
     posicoes = np.hstack((coluna1.reshape(-1, 1),
@@ -105,6 +106,7 @@ def algoritmo_goa(S, N, iter_max):
                 
                 cabra_aleatoria = posicoes[indice_aleatorio]    
                 cabra_atual = cabra_atual + coeficiente_pulo * (cabra_aleatoria - cabra_atual)
+                print(f"Pulo da cabra {i} para a cabra {indice_aleatorio}!\n")
             
             # GARANTINDO QUE A CABRA NÃO SAIA DO ESPAÇO DE BUSCA
             cabra_atual = np.clip(cabra_atual, limite_inferior, limite_superior)
@@ -192,6 +194,7 @@ class Corobeu:
 
     def cacar_pid(self, PID):
         
+        t = 1
         integral_counter = 0
         kp, ki, kd = PID[0], PID[1], PID[2]
         path = [[0.4, 0.4],
@@ -240,7 +243,7 @@ class Corobeu:
                     phi_obs = self.wrap_angle(phi_obs)
                     error_phi = self.wrap_angle(phid - phi_obs)
 
-                    error_phi_sum += abs(error_phi)
+                    error_phi_sum += abs(error_phi) * t
 
                     omega = self.pid_controller(kp, ki, kd, error_phi, integral_counter)
 
@@ -267,6 +270,8 @@ class Corobeu:
                         # Opcional: Penalizar o erro total se o tempo esgotou
                         error_phi_sum += 1000 # Adiciona uma grande penalidade
                         break
+                    
+                    t += self.dt
                     
                 # LÓGICA 5: Acumula o erro do trecho recém-concluído no erro total
                 total_error += error_phi_sum
