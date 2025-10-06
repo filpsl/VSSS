@@ -132,7 +132,7 @@ class Corobeu:
 
                 vl, vr = self.speed_control(U, omega)
                 
-                sim.simxSetJointTargetVelocity(clientID, motorE, vl, sim.simx_opmode_blocking)
+                sim.simxSetJointTargetVelocity(clientID, motorE, vl + 2, sim.simx_opmode_blocking)
                 sim.simxSetJointTargetVelocity(clientID, motorD, vr, sim.simx_opmode_blocking)
                 self.last_speed_time = current_time
                 
@@ -154,6 +154,7 @@ class Corobeu:
         self.Integral_part = min(max(self.Integral_part + ki * sum(self.interror) * self.dt, -Integral_saturation), Integral_saturation)
         self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
+        print(f"PID: {PID}\n")
         return PID
     
     
@@ -172,6 +173,10 @@ if __name__ == "__main__":
     COR_DO_TIME = 0
     
     dt = 0.05
+    
+    kp = 3.45051784 
+    ki = 0.02365731 
+    kd = 0.06288346
     
     crb01 = Corobeu(kp, ki, kd, dt)
     crb01.follow_ball()

@@ -248,9 +248,9 @@ class Corobeu:
 # PONTO DE ENTRADA DO PROGRAMA
 if __name__ == "__main__":
     
-    kp = 3.0528502  
-    kd = 0.79546531
-    ki = 0
+    kp = 3.45051784 
+    ki = 0.02365731 
+    kd = 0.06288346
     
     dt = 0.05  # Tempo de ciclo do controlador (50 ms)
     omega_max = 8 # Velocidade angular máxima (rad/s)
