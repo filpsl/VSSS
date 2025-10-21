@@ -29,9 +29,10 @@ class Corobeu:
         self.kd = kd
         self.dt = dt
         
-        self.f_ant = 0
-        self.interror = 0
-        self.Integral_part = 0        
+        self.integral_range = 30
+        self.interror = [0 for _ in range(self.integral_range)]
+        self.Integral_part = 0  
+        self.f_ant = 0         
         
         self.v_max = 225
         self.v_min = 70
@@ -119,54 +120,57 @@ class Corobeu:
                 print(f"VL: {vl} VR: {vr} + 60")
                 #self.send_speed(vl, vr + 60)
 
+                integral_counter += 1
+                if integral_counter >= self.integral_range:
+                    integral_counter = 0
                 self.last_speed_time = current_time
 
 
-    def follow_path(self, path_x, path_y):
+    def follow_path(self, path_x, path_y, stop_on_arrival=False):
         phi_obs = 0
 
         while True:
-            x, y, phi_obs = self.get_position()[0:3]
-
-            if x is None or y is None:
-                continue
-
-            phid = math.atan2((path_y - y), (path_x - x))
-            phid = self.wrap_angle(phid)
-            phi_obs = self.wrap_angle(phi_obs)
             
-            error_phi = self.wrap_angle(phid - phi_obs)
-            omega = self.pid_controller(error_phi)
-
-            error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
-            error_distance_global = math.sqrt((path_y - y) ** 2 + (path_x - x) ** 2)
-            
-            U = self.v_linear  
             current_time = time.time()
-
             if current_time - self.last_speed_time >= self.dt:
                 
+                x, y, phi_obs = self.get_position()[0:3]
+
+                if x is None or y is None:
+                    continue
+
+                phid = math.atan2((path_y - y), (path_x - x))
+                phid = self.wrap_angle(phid)
+                phi_obs = self.wrap_angle(phi_obs)
+
+                error_phi = self.wrap_angle(phid - phi_obs)
+                omega = self.pid_controller(error_phi)
+
+                error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
+
+                U = self.v_linear  
+                current_time = time.time()
+
                 vl, vr = self.speed_control(U, omega)
                 self.send_speed(vl, vr + 60)
-                
                 self.last_speed_time = current_time
-            
-            if (error_distance <= 0.07):
-                self.send_speed(0,0)
-                self.off()
+
+                if (error_distance <= 0.07 and stop_on_arrival):
+                    self.send_speed(0,0)
+                    self.off()
             
 
-    def pid_controller(self, error):
+    def pid_controller(self, error, integral_counter):
 
         Integral_saturation = 5
         raizes = math.sqrt(kd), math.sqrt(kp), math.sqrt(ki)
         Filter_e = 1 / (max(raizes) * 10)   
         unomenosalfaana = math.exp(-(self.dt / Filter_e))
         alfaana = 1 - unomenosalfaana
-        self.interror += error
+        self.interror[integral_counter] = error
         f = unomenosalfaana * self.f_ant + alfaana * error
         deerror = (f - self.f_ant) / self.dt if self.f_ant != 0 else f / self.dt
-        self.Integral_part = min(max(self.Integral_part + ki * self.interror * self.dt, -Integral_saturation), Integral_saturation)
+        self.Integral_part = min(max(self.Integral_part + ki * sum(self.interror) * self.dt, -Integral_saturation), Integral_saturation)
         self.f_ant = f
         PID = kp * error + self.Integral_part + deerror * kd
         return PID

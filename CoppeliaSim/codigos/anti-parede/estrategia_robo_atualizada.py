@@ -13,15 +13,20 @@ FIELD_Y_MAX = 0.65
 FIELD_Y_MIN = -0.65
 
 # Parâmetros da Estratégia
-# Margem de segurança. O robô ativará a fuga quando chegar a esta distância da parede.
-WALL_MARGIN = 0.10 # 10 cm
+WALL_MARGIN = 0.018 # Margem para evitar paredes preventivamente
 
-# Nomes dos Estados da Máquina de Estados 
+# --- NOVO: Parâmetros para detecção de robô preso e fuga ---
+STUCK_VELOCITY_THRESHOLD = 0.01 # Velocidade (m/s) abaixo da qual o robô é considerado parado
+STUCK_PWM_THRESHOLD = 3.0       # Velocidade mínima enviada aos motores para considerar a detecção
+UNSTICK_DURATION = 1.0          # Duração da manobra de fuga em segundos
+
+# Nomes dos Estados da Máquina de Estados
 STATE_ATTACKING_BALL = "attacking_ball"
 STATE_AVOIDING_WALL = "avoiding_wall"
+STATE_UNSTICKING = "unsticking" # --- NOVO ESTADO ---
 
 
-# FUNÇÃO DE CONEXÃO (pode ser mantida fora da classe
+# FUNÇÃO DE CONEXÃO (pode ser mantida fora da classe)
 def connect_CRB(port):
     """
     Função usada para se comunicar com o CoppeliaSim
@@ -66,12 +71,18 @@ class Corobeu:
         # --- Parâmetros Físicos e de Movimento do Robô ---
         self.v_max = 8
         self.v_min = -8
-        self.v_linear = 6
+        self.v_linear = 4
         
         # --- Variáveis da Máquina de Estados ---
         self.current_state = STATE_ATTACKING_BALL
         self.robot_position = {'x': 0.0, 'y': 0.0, 'phi': 0.0}
         self.ball_position = {'x': 0.0, 'y': 0.0}
+        
+        # --- NOVO: Variáveis para detecção de robô preso ---
+        self.previous_robot_position = {'x': 0.0, 'y': 0.0}
+        self.last_vl = 0
+        self.last_vr = 0
+        self.unstick_start_time = 0
         
         # --- Temporizador para o loop de controle ---
         self.last_update_time = time.time()
@@ -97,6 +108,10 @@ class Corobeu:
         
         if math.isnan(vr) or math.isnan(vl):
             vr, vl = 0, 0
+            
+        # --- NOVO: Armazena as últimas velocidades enviadas ---
+        self.last_vl = vl
+        self.last_vr = vr
         
         return int(vl), int(vr)
 
@@ -130,7 +145,7 @@ class Corobeu:
         
         return omega
     
-    # --- NOVOS MÉTODOS PARA A ESTRATÉGIA ---
+    # --- MÉTODOS EXISTENTES E NOVOS PARA A ESTRATÉGIA ---
     
     def is_near_wall(self):
         """Verifica se o robô está na margem de perigo perto de uma parede."""
@@ -141,6 +156,25 @@ class Corobeu:
             x < FIELD_X_MIN + WALL_MARGIN or
             y > FIELD_Y_MAX - WALL_MARGIN or
             y < FIELD_Y_MIN + WALL_MARGIN):
+            return True
+        return False
+
+    # --- NOVO: Método para detectar se o robô está preso ---
+    def is_stuck(self):
+        """Verifica se o robô está preso comparando comando de motor com movimento real."""
+        # Calcula a distância percorrida desde a última verificação
+        dx = self.robot_position['x'] - self.previous_robot_position['x']
+        dy = self.robot_position['y'] - self.previous_robot_position['y']
+        distance_moved = math.sqrt(dx**2 + dy**2)
+        
+        # Calcula a velocidade real
+        actual_velocity = distance_moved / self.dt
+        
+        # Verifica se o comando enviado aos motores era alto
+        commanded_speed = max(abs(self.last_vl), abs(self.last_vr))
+        
+        # Condição de "preso": comando alto, mas velocidade real muito baixa
+        if commanded_speed > STUCK_PWM_THRESHOLD and actual_velocity < STUCK_VELOCITY_THRESHOLD:
             return True
         return False
 
@@ -174,6 +208,32 @@ class Corobeu:
         
         return self.speed_control(U, omega)
 
+    # --- NOVO: Método para executar a manobra de fuga ---
+    def perform_unstick_maneuver(self):
+        """
+        Executa uma manobra de ré e giro para destravar o robô.
+        Retorna (vl, vr).
+        """
+        # A lógica é simples: dar ré e girar para o centro ao mesmo tempo.
+        # Isso geralmente é suficiente para sair de quinas e paredes.
+        robot_x = self.robot_position['x']
+        robot_y = self.robot_position['y']
+
+        # Mira no centro do campo
+        target_angle_to_center = math.atan2(-robot_y, -robot_x)
+        error_phi = self.wrap_angle(target_angle_to_center - self.robot_position['phi'])
+        
+        # Controlador P para o giro
+        kp_unstick = 6.0
+        omega = kp_unstick * error_phi
+        
+        # Velocidade de ré constante
+        U = -self.v_linear
+        
+        print(f"--- MANOBRA DE FUGA --- Dando ré e girando para o centro.")
+        
+        return self.speed_control(U, omega)
+
     # --- FUNÇÕES UTILITÁRIAS ---
 
     def wrap_angle(self, angle):
@@ -186,7 +246,7 @@ class Corobeu:
         # Adicionar aqui a lógica para parar os motores no simulador se necessário
         sys.exit(0)
 
-    # --- LOOP PRINCIPAL (ANTIGO 'follow_ball') ---
+    # --- LOOP PRINCIPAL (run_strategy) ---
 
     def run_strategy(self):
         """
@@ -209,21 +269,37 @@ class Corobeu:
             s, robotOri = sim.simxGetObjectOrientation(clientID, robot, -1, sim.simx_opmode_blocking)
             
             if robotPos and robotOri:
+                # --- ALTERADO: Atualiza a posição anterior antes da nova ---
+                self.previous_robot_position['x'] = self.robot_position['x']
+                self.previous_robot_position['y'] = self.robot_position['y']
+
                 self.robot_position['x'] = robotPos[0]
                 self.robot_position['y'] = robotPos[1]
-                # A orientação Z (gamma) é a que nos interessa para rotação no plano
-                # O ajuste de -pi/2 pode ser necessário dependendo de como o robô foi modelado
                 self.robot_position['phi'] = self.wrap_angle(robotOri[2] - math.pi/2)
             
             if ballPos:
                 self.ball_position['x'] = ballPos[0]
                 self.ball_position['y'] = ballPos[1]
 
-            # 2. VERIFICAR TRANSIÇÕES DE ESTADO
-            if self.is_near_wall():
-                self.current_state = STATE_AVOIDING_WALL
-            else:
-                self.current_state = STATE_ATTACKING_BALL
+            # 2. VERIFICAR TRANSIÇÕES DE ESTADO (--- LÓGICA ALTERADA ---)
+            # A ordem de verificação é importante: a condição de "preso" tem a maior prioridade.
+            
+            # Se está no estado de fuga, verifica se o tempo acabou
+            if self.current_state == STATE_UNSTICKING:
+                if time.time() - self.unstick_start_time > UNSTICK_DURATION:
+                    self.current_state = STATE_ATTACKING_BALL # Volta ao normal
+            
+            # Verifica se o robô ficou preso
+            if self.is_stuck() and self.current_state != STATE_UNSTICKING:
+                self.current_state = STATE_UNSTICKING
+                self.unstick_start_time = time.time() # Inicia o temporizador da manobra
+            
+            # Se não está preso, segue a lógica normal
+            elif self.current_state != STATE_UNSTICKING:
+                if self.is_near_wall():
+                    self.current_state = STATE_AVOIDING_WALL
+                else:
+                    self.current_state = STATE_ATTACKING_BALL
 
             # 3. EXECUTAR A LÓGICA DO ESTADO ATUAL
             if self.current_state == STATE_ATTACKING_BALL:
@@ -238,6 +314,11 @@ class Corobeu:
                 print(f"ESTADO: [EVITANDO PAREDE]")
                 vl, vr = self.perform_wall_avoidance()
             
+            # --- NOVO: Execução do estado de fuga ---
+            elif self.current_state == STATE_UNSTICKING:
+                print(f"ESTADO: [FUGA DE COLISÃO]")
+                vl, vr = self.perform_unstick_maneuver()
+            
             else: # Estado desconhecido
                 vl, vr = 0, 0
 
@@ -248,8 +329,9 @@ class Corobeu:
 # PONTO DE ENTRADA DO PROGRAMA
 if __name__ == "__main__":
     
+    # --- Parâmetros de Controle (Tuning do PID) ---
     kp = 3.45051784 
-    ki = 0.02365731 
+    ki = 0.02365731 # PSO
     kd = 0.06288346
     
     dt = 0.05  # Tempo de ciclo do controlador (50 ms)
