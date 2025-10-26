@@ -57,7 +57,8 @@ class Corobeu:
         robots = getattr(frame.detection, self._robot_attr)
         for robot in robots:
             if robot.robot_id == self.robot_id:
-                return robot.x / 1000, robot.y / 1000, robot.orientation, frame.detection.balls[0].x / 1000, frame.detection.balls[0].y / 1000
+                return robot.x / 1000, robot.y / 1000, robot.orientation, frame.detection.balls[0].x / 1000, 
+                frame.detection.balls[0].y / 1000
         return None, None, None, None, None
     
 
@@ -93,6 +94,7 @@ class Corobeu:
     
     def follow_ball(self):        
         phi_obs = 0
+        integral_counter = 0
 
         while True:
             
@@ -109,7 +111,7 @@ class Corobeu:
                 phi_obs = self.wrap_angle(phi_obs)
 
                 error_phi = self.wrap_angle(phid - phi_obs)
-                omega = self.pid_controller(error_phi)
+                omega = self.pid_controller(error_phi, integral_counter)
 
                 error_distance = math.sqrt((ball_y - y)**2 + (ball_x - x)**2)
                 error_distance_global = math.sqrt((ball_y - y) ** 2 + (ball_x - x) ** 2)
@@ -128,6 +130,7 @@ class Corobeu:
 
     def follow_path(self, path_x, path_y, stop_on_arrival=False):
         phi_obs = 0
+        integral_counter = 0
 
         while True:
             
@@ -144,7 +147,7 @@ class Corobeu:
                 phi_obs = self.wrap_angle(phi_obs)
 
                 error_phi = self.wrap_angle(phid - phi_obs)
-                omega = self.pid_controller(error_phi)
+                omega = self.pid_controller(error_phi, integral_counter)
 
                 error_distance = math.sqrt((path_y - y)**2 + (path_x - x)**2)
 
